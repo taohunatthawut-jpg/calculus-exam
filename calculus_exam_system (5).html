@@ -361,7 +361,7 @@
   <div class="card">
     <div class="logo">▸ Exam System</div>
     <div class="card-title">เข้าสู่ระบบสอบ</div>
-    <div class="card-sub">วิชาแคลคูลัสเบื้องต้น · ม.6</div>
+    <div class="card-sub">วิชาแคลคูลัสเบื้องต้น · ม.6 &nbsp;<span style="font-size:11px;background:rgba(63,185,80,0.15);color:#3fb950;padding:2px 8px;border-radius:99px;font-family:var(--mono);">🔥 Firebase</span></div>
 
     <div class="role-tabs">
       <div class="role-tab active" id="tabStudent" onclick="switchRole('student')">👤 ผู้เข้าสอบ</div>
@@ -536,13 +536,33 @@
     </div>
 
     <div class="divider"></div>
-    <div style="display:flex; justify-content:flex-end;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <button class="btn btn-danger btn-sm" onclick="clearAllRecords()" style="width:auto;padding:10px 20px;">🗑 ล้างข้อมูลทั้งหมด</button>
       <button class="btn btn-primary btn-sm" onclick="exportHTML()">⬇ ส่งออกรายงาน .html</button>
     </div>
   </div>
 </div>
 
-<script>
+<script type="module">
+// ==================== FIREBASE ====================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, push, onValue, get, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC495V42qVEyNyXq6j0o-C0qMfHSL0M1d4",
+  authDomain: "calculus-exam.firebaseapp.com",
+  databaseURL: "https://calculus-exam-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "calculus-exam",
+  storageBucket: "calculus-exam.firebasestorage.app",
+  messagingSenderId: "952962545921",
+  appId: "1:952962545921:web:fee6d9129ed4862e45c300"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const recordsRef = ref(db, 'examRecords');
+const settingsRef = ref(db, 'settings');
+
 // ==================== DATA ====================
 const ADMIN = { email: 'admin@exam.com', password: 'admin1234' };
 const STUDENT_PASSWORD = 'exam2025';
@@ -586,13 +606,71 @@ let userAnswers = [];
 let timerInterval = null;
 let timeLeft = EXAM_DURATION;
 let examStartTime = null;
-let examRecords = [];
+let examRecords = []; // local cache, synced from Firebase
+
+// ==================== FIREBASE SYNC ====================
+// Load exam duration setting from Firebase
+get(settingsRef).then(snap => {
+  if (snap.exists()) {
+    const s = snap.val();
+    if (s.examDurationSeconds) {
+      EXAM_DURATION = s.examDurationSeconds;
+      timeLeft = EXAM_DURATION;
+      const mins = Math.round(EXAM_DURATION / 60);
+      const el = document.getElementById('startTimeDisplay');
+      if (el) el.textContent = mins + ' นาที';
+      const inp = document.getElementById('adminMinutes');
+      if (inp) inp.value = mins;
+    }
+  }
+});
+
+// Real-time listener for admin dashboard
+function listenToRecords() {
+  onValue(recordsRef, (snap) => {
+    examRecords = [];
+    if (snap.exists()) {
+      snap.forEach(child => {
+        const r = child.val();
+        // Deserialize date strings back to Date objects
+        r.startTime = r.startTime ? new Date(r.startTime) : null;
+        r.endTime = r.endTime ? new Date(r.endTime) : null;
+        examRecords.push(r);
+      });
+      // Sort by endTime ascending
+      examRecords.sort((a, b) => (a.endTime || 0) - (b.endTime || 0));
+    }
+    // If admin is currently viewing, re-render
+    if (currentUser && currentUser.role === 'admin') {
+      renderAdmin();
+    }
+  });
+}
+
+// Call once on load so admin always has live data
+listenToRecords();
+
+// Save a single record to Firebase
+function saveRecordToFirebase(record) {
+  const payload = {
+    email: record.email,
+    startTime: record.startTime ? record.startTime.toISOString() : null,
+    endTime: record.endTime ? record.endTime.toISOString() : null,
+    score: record.score,
+    answers: record.answers,
+    timeUp: record.timeUp
+  };
+  push(recordsRef, payload).catch(err => console.error('Firebase write error:', err));
+}
 
 // ==================== ADMIN TIME SETTING ====================
 function setExamTime() {
   const mins = parseInt(document.getElementById('adminMinutes').value);
   if (!mins || mins < 1 || mins > 180) return;
   EXAM_DURATION = mins * 60;
+  // Persist to Firebase
+  set(settingsRef, { examDurationSeconds: EXAM_DURATION })
+    .catch(err => console.error('Firebase settings error:', err));
   const msg = document.getElementById('timeSetMsg');
   msg.style.display = 'inline';
   setTimeout(() => msg.style.display = 'none', 2000);
@@ -738,7 +816,9 @@ function submitExam(timeUp = false) {
     answers: [...userAnswers],
     timeUp
   };
-  examRecords.push(record);
+
+  // Save to Firebase (persists across sessions)
+  saveRecordToFirebase(record);
 
   renderResult(record);
   showPage('resultPage');
@@ -878,10 +958,32 @@ function exportHTML() {
   a.click();
 }
 
+// ==================== CLEAR DATA ====================
+function clearAllRecords() {
+  if (!confirm('ยืนยันการล้างข้อมูลผู้เข้าสอบทั้งหมด? การกระทำนี้ไม่สามารถเรียกคืนได้')) return;
+  const { remove } = window._fbRemove || {};
+  // Use Firebase remove via set(null)
+  set(recordsRef, null)
+    .then(() => { examRecords = []; renderAdmin(); })
+    .catch(err => { console.error(err); alert('เกิดข้อผิดพลาด: ' + err.message); });
+}
+
 // ==================== ENTER KEY ====================
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('loginPage').classList.contains('active')) handleLogin();
 });
+
+// ==================== EXPOSE GLOBALS (needed for type="module") ====================
+window.handleLogin = handleLogin;
+window.logout = logout;
+window.switchRole = switchRole;
+window.startExam = startExam;
+window.selectOption = selectOption;
+window.nextQuestion = nextQuestion;
+window.handleTimeUp = handleTimeUp;
+window.setExamTime = setExamTime;
+window.clearAllRecords = clearAllRecords;
+window.exportHTML = exportHTML;
 </script>
 </body>
 </html>
