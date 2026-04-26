@@ -393,7 +393,7 @@
       </div>
       <div class="info-chip">
         <div class="info-chip-label">เวลา</div>
-        <div class="info-chip-val">30 นาที</div>
+        <div class="info-chip-val" id="startTimeDisplay">30 นาที</div>
       </div>
       <div class="info-chip">
         <div class="info-chip-label">คะแนนเต็ม</div>
@@ -500,6 +500,21 @@
       </div>
     </div>
 
+    <!-- TIME SETTING -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:28px;">
+      <div style="font-size:13px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px;">⏱ ตั้งเวลาสอบ</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input type="number" id="adminMinutes" min="1" max="180" value="30"
+            style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:20px;font-weight:700;padding:8px 12px;outline:none;text-align:center;">
+          <span style="font-size:15px;color:var(--text2);">นาที</span>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="setExamTime()" style="width:auto;padding:10px 20px;">บันทึก</button>
+        <span id="timeSetMsg" style="font-size:13px;color:var(--accent2);display:none;">✓ บันทึกแล้ว</span>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-top:10px;">เวลาที่ตั้งจะมีผลกับผู้เข้าสอบคนถัดไป</div>
+    </div>
+
     <div class="section-title">รายชื่อผู้เข้าสอบ</div>
     <div class="table-wrap">
       <table>
@@ -563,7 +578,7 @@ const QUESTIONS = [
 ];
 
 const LABEL = ['ก','ข','ค','ง','จ'];
-const EXAM_DURATION = 30 * 60; // seconds
+let EXAM_DURATION = 30 * 60; // seconds (admin can change)
 
 let currentUser = null;
 let currentQuestion = 0;
@@ -572,6 +587,17 @@ let timerInterval = null;
 let timeLeft = EXAM_DURATION;
 let examStartTime = null;
 let examRecords = [];
+
+// ==================== ADMIN TIME SETTING ====================
+function setExamTime() {
+  const mins = parseInt(document.getElementById('adminMinutes').value);
+  if (!mins || mins < 1 || mins > 180) return;
+  EXAM_DURATION = mins * 60;
+  const msg = document.getElementById('timeSetMsg');
+  msg.style.display = 'inline';
+  setTimeout(() => msg.style.display = 'none', 2000);
+  document.getElementById('startTimeDisplay').textContent = mins + ' นาที';
+}
 
 // ==================== ROUTING ====================
 function showPage(id) {
